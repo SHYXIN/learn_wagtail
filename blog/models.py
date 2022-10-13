@@ -1,11 +1,12 @@
 from django.db import models
 
-
 from modelcluster.fields import ParentalKey
+from modelcluster.contrib.taggit import ClusterTaggableManager
+from taggit.models import TaggedItemBase
 
 from wagtail.models import Page, Orderable
 from wagtail.fields import RichTextField
-from wagtail.admin.panels import FieldPanel, InlinePanel
+from wagtail.admin.panels import FieldPanel, InlinePanel, MultiFieldPanel
 from wagtail.search import index
 
 
@@ -42,11 +43,20 @@ class BlogIndexPage(Page):
 #         FieldPanel('intro'),
 #         FieldPanel('body'),
 #     ]
-    
+
+class BlogPageTag(TaggedItemBase):
+    content_object = ParentalKey(
+        'BlogPage',
+        related_name='tagged_items',
+        on_delete=models.CASCADE
+    )
+
+
 class BlogPage(Page):
     date = models.DateField("Post date")
     intro = models.CharField(max_length=250)
     body = RichTextField(blank=True)
+    tags = ClusterTaggableManager(through=BlogPageTag, blank=True)
 
     # 让我们定义一个main_image方法，它从第一个画廊项目返回图像
     def main_image(self):
@@ -62,13 +72,14 @@ class BlogPage(Page):
     ]
 
     content_panels = Page.content_panels + [
-        FieldPanel('date'),
+        MultiFieldPanel([
+            FieldPanel('date'),
+            FieldPanel('tags'),
+        ], heading="Blog information"),
         FieldPanel('intro'),
         FieldPanel('body'),
-        InlinePanel('gallery_images', label="Gallery images"),  # 新增图片
+        InlinePanel('gallery_images', label="Gallery images"),
     ]
-    
-    
 
 class BlogPageGalleryImage(Orderable):
     page = ParentalKey(BlogPage, on_delete=models.CASCADE, related_name='gallery_images')
@@ -82,3 +93,15 @@ class BlogPageGalleryImage(Orderable):
         FieldPanel('caption'),
     ]
 
+class BlogTagIndexPage(Page):
+
+    def get_context(self, request):
+
+        # Filter by tag
+        tag = request.GET.get('tag')
+        blogpages = BlogPage.objects.filter(tags__name=tag)
+
+        # Update template context
+        context = super().get_context(request)
+        context['blogpages'] = blogpages
+        return context
